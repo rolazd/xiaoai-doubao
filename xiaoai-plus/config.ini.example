@@ -46,6 +46,8 @@ daily_token_limit = 0
 playback_gain = 0.90
 # Diagnostic only: save at most 5 seconds of decoded output to a private /tmp raw file.
 dump_output_audio_raw = 0
+# 豆包会话时用音箱自带的灯：唤醒、在听、在说三种灯效，随音量闪动。
+led = on
 
 [memory]
 # Enable only after server provisioning and authorized household validation.

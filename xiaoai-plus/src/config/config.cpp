@@ -445,6 +445,11 @@ Config load(const std::string& path, bool memory_only) {
           throw std::runtime_error("audio.dump_output_audio_raw must be 0 or 1");
         cfg.audio.dump_output_audio_raw = dump->second == "1";
       }
+      if (auto led = kv.find("led"); led != kv.end()) {
+        if (led->second != "on" && led->second != "off")
+          throw std::runtime_error("audio.led must be on or off");
+        cfg.audio.led = led->second == "on";
+      }
     }
   }
 

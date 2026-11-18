@@ -21,6 +21,7 @@
 #include "audio/kws_diagnostics.hpp"
 #include "config/config.hpp"
 #include "audio/aec_webrtc.hpp"
+#include "audio/led_control.hpp"
 #include "audio/ordinary_barge_capture.hpp"
 #include "audio/shadow_webrtc.hpp"
 #include "realtime/client.hpp"
@@ -194,6 +195,8 @@ class App {
   std::atomic<bool> identity_pending_{true};
   std::deque<memory::Action> memory_actions_;
   std::unique_ptr<dsp::AecWebrtc> aec_;
+  // Stock light ring via ledd (wake / listening / speaking, level-animated).
+  std::unique_ptr<audio::LedController> led_;
 
   std::unique_ptr<wakeup::Gate> gate_;
   std::unique_ptr<wakeup::Trigger> trigger_;

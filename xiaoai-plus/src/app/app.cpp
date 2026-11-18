@@ -255,6 +255,7 @@ App::App(config::Config cfg, bool kws_only, bool trial_once, bool kws_diagnostic
   config::Audio player_audio = config::MakeTtsPlaybackAudio(cfg_.audio);
   if (!kws_only_) {
     player_ = std::make_unique<audio::AplayPlayer>(player_audio, cfg_.budget.output_queue_frames);
+    if (cfg_.audio.led) led_ = std::make_unique<audio::LedController>();
   }
 
   // NS/AGC/AEC run on mono audio for uplink audio processing.
@@ -406,6 +407,7 @@ void App::EndLocalConversation(const char* reason) {
 }
 void App::AfterDisarm(const std::string& reason) {
     if(reason=="local_kws_exit" || reason=="user_exit")InterruptPlayback(audio::SessionCue::kExit);
+    if(led_)led_->SetMode(audio::LedController::Mode::kOff);
     {std::lock_guard<std::mutex> lock(mu_);reply_pending_=false;}
     control_cv_.notify_one();
     memory_switching_.store(false);
@@ -1280,6 +1282,13 @@ void App::OnInputAudio(const std::vector<uint8_t>& chunk) {
     }
 
     RecordUplinkLevel(*api_audio);
+    if (led_ && !ai_speaking && api_audio->size() >= 2) {
+      double sq = 0; const size_t n = api_audio->size() / 2;
+      const auto* s = reinterpret_cast<const int16_t*>(api_audio->data());
+      for (size_t i = 0; i < n; ++i) sq += double(s[i]) * s[i];
+      led_->SetMode(audio::LedController::Mode::kListen);
+      led_->Level(std::sqrt(sq / n), 30.0, 40.0);
+    }
     if (api_audio == &owned_audio) {
       client_->EnqueueAudio(std::move(owned_audio));
     } else {
@@ -1356,6 +1365,13 @@ void App::OnAudio(const std::vector<uint8_t>& chunk) {
   }
   if (gate_) gate_->NoteAiProgress();
   if (client_ && legacy_effects_live_.load()) client_->SetPlaybackActive(true);
+  if (led_ && chunk.size() >= 2) {
+    double sq = 0; const size_t n = chunk.size() / 2;
+    const auto* s = reinterpret_cast<const int16_t*>(chunk.data());
+    for (size_t i = 0; i < n; ++i) sq += double(s[i]) * s[i];
+    led_->SetMode(audio::LedController::Mode::kSpeak);
+    led_->Level(std::sqrt(sq / n), 50.0, 30.0);
+  }
   {
     std::lock_guard<std::mutex> lock(mu_);
     ++pending_playback_chunks_;
@@ -1474,6 +1490,8 @@ void App::OnSetAiSpeaking(bool is_speaking) {
     gate_->SetAiSpeaking(gate_speaking);
   }
   if (!gate_speaking && client_) client_->SetPlaybackActive(false);
+  if (led_ && gate_ && gate_->step() == wakeup::Step::kActive)
+    led_->SetMode(gate_speaking ? audio::LedController::Mode::kSpeak : audio::LedController::Mode::kListen);
   if (!is_speaking) {
     MaybeStartNextTurnWindow();
     TryFinalizeFarewell();
@@ -1647,6 +1665,7 @@ void App::MaybeStartNextTurnWindow() {
     }
   }
   if (ready && gate_ && gate_->step() == wakeup::Step::kActive) {
+    if (led_) led_->SetMode(audio::LedController::Mode::kListen);
     UplinkLevelEvent(0);
     gate_->RefreshTimeout();
     kLog->info("ready for next user turn; idle_window_seconds={}",
@@ -1693,6 +1712,8 @@ void App::OnArm(const std::string& reason,const KwsTicket& ticket) {
   if(!ticket)InvalidateKws();
   exit_echo_guard_.Reset();
   kLog->info("gate armed: {}", reason);
+  if (led_ && !kws_only_ && (!native_wake_monitor_ || !native_wake_monitor_->Blocked()))
+    led_->SetMode(audio::LedController::Mode::kWake);
   if (native_wake_monitor_ && native_wake_monitor_->Blocked()) {
     if (gate_) gate_->Disarm("native_xiaoai_active");
     return;

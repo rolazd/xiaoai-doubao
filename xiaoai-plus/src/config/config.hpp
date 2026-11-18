@@ -47,6 +47,8 @@ struct AudioPreset {
   int period_size{360};
   float playback_gain{0.90f};
   bool dump_output_audio_raw{false};
+  // Drive the stock light ring through ledd while a Doubao session is active.
+  bool led{true};
 };
 using Audio = AudioPreset;
 
