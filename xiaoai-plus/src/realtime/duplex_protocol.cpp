@@ -200,7 +200,8 @@ void Session::RequireActive() const {
   if (state_ != State::kActive) throw std::logic_error("duplex session is not active");
 }
 
-std::string Session::Create(const std::string& instructions, const std::string& voice, bool child_safety) {
+std::string Session::Create(const std::string& instructions, const std::string& voice, bool child_safety,
+                            const std::string& resume_id, const std::string& extra_json) {
   if (state_ != State::kIdle || voice.empty()) {
     throw std::logic_error("duplex session cannot be created");
   }
@@ -219,7 +220,11 @@ std::string Session::Create(const std::string& instructions, const std::string& 
       {"strict_audit", true}, {"enable_volc_websearch", false},
       {"audit_response", "这个话题请和爸爸妈妈聊，我们换个练习吧"}};
     session["tools"] = nlohmann::json::array();
+  } else if (!extra_json.empty()) {
+    const auto extra = nlohmann::json::parse(extra_json);
+    if (extra.is_object() && !extra.empty()) session["extension"]["dialog"]["extra"] = extra;
   }
+  if (!child_safety && !resume_id.empty()) session["id"] = resume_id;
   return nlohmann::json{{"type", "session.create"}, {"session", std::move(session)}}.dump();
 }
 
@@ -322,6 +327,7 @@ Event Session::Receive(const std::string& json_text) {
       throw std::runtime_error("invalid session.created event");
     }
     event.session_id = msg["session"]["id"].get<std::string>();
+    id_ = event.session_id;
     state_ = State::kActive;
     return event;
   }

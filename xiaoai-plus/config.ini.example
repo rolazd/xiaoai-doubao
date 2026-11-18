@@ -8,6 +8,11 @@ voice = zh_female_vv_jupiter_bigtts
 bot_name = 豆包
 system_role = 你是豆包同学，是小爱音箱上的语音助手。
 speaking_style = 语气自然、友好、简洁。
+# 以下两项只在 protocol = v3（Seeduplex）且不开记忆后台时生效。
+# 填火山“豆包搜索”的 API Key 就打开内置联网；留空则关闭。
+websearch_api_key =
+# on：每次唤醒带上上一次的会话编号，云端接着最近的对话聊。
+resume_dialog = off
 
 [realtime.o2]
 # smart_turn 开时云端窗口只作兜底

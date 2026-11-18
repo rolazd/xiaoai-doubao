@@ -32,6 +32,9 @@ struct Realtime {
   std::string app_id;
   std::string access_token;
   std::string secret_key;
+  // Seeduplex (protocol = v3) without the identity Service only.
+  std::string websearch_api_key;  // empty: built-in web search off
+  bool resume_dialog{false};      // resend the last session.id so the provider keeps context
   RealtimePreset preset;
 
   std::map<std::string, std::string> request_headers() const;

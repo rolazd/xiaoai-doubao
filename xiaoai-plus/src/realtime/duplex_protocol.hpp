@@ -60,7 +60,11 @@ Event ReadBillingObservation(const std::string& json_text);
 class Session {
  public:
   State state() const { return state_; }
-  std::string Create(const std::string& instructions, const std::string& voice, bool child_safety = false);
+  // resume_id: a previous session.id; the provider replays that conversation's recent context.
+  // extra_json: object merged into extension.dialog.extra (web search, audit level).
+  std::string Create(const std::string& instructions, const std::string& voice, bool child_safety = false,
+                     const std::string& resume_id = "", const std::string& extra_json = "");
+  const std::string& id() const { return id_; }
   std::string AudioAppend(const std::vector<uint8_t>& pcm_20ms) const;
   std::string Greeting(const std::string& text) const;
   std::string CommitInput() const;
@@ -74,6 +78,7 @@ class Session {
  private:
   void RequireActive() const;
   State state_{State::kIdle};
+  std::string id_;
 };
 
 // Reframes recorder callbacks (90 ms on OH2P) without dropping the 10 ms tail.

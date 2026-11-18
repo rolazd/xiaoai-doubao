@@ -312,6 +312,12 @@ Config load(const std::string& path, bool memory_only) {
       SetIfPresent(kv, "bot_name", &cfg.realtime.preset.bot_name);
       SetIfPresent(kv, "system_role", &cfg.realtime.preset.system_role);
       SetIfPresent(kv, "speaking_style", &cfg.realtime.preset.speaking_style);
+      SetIfPresent(kv, "websearch_api_key", &cfg.realtime.websearch_api_key);
+      if (auto r = kv.find("resume_dialog"); r != kv.end()) {
+        if (r->second != "on" && r->second != "off")
+          throw std::runtime_error("realtime.resume_dialog must be on or off");
+        cfg.realtime.resume_dialog = r->second == "on";
+      }
     }
 
     if (auto it = sections.find("realtime.o2"); it != sections.end()) {

@@ -49,6 +49,19 @@ int main() {
   assert(rejected);
 
   auto created = session.Receive(R"({"type":"session.created","session":{"id":"test-sid"}})");
+  assert(session.id() == "test-sid");
+  {
+    Session resumed;
+    const auto c = nlohmann::json::parse(resumed.Create("x", "v", false, "old-sid",
+        R"({"enable_volc_websearch":true,"volc_websearch_api_key":"k"})"));
+    assert(c.at("session").at("id") == "old-sid");
+    assert(c.at("session").at("extension").at("dialog").at("extra").at("enable_volc_websearch") == true);
+    Session child;
+    const auto k = nlohmann::json::parse(child.Create("x", "v", true, "old-sid", R"({"enable_volc_websearch":true})"));
+    assert(!k.at("session").contains("id"));
+    assert(k.at("session").at("extension").at("dialog").at("extra").at("strict_audit") == true);
+    assert(k.at("session").at("extension").at("dialog").at("extra").at("enable_volc_websearch") == false);
+  }
   assert(created.session_id == "test-sid" && session.state() == State::kActive);
   auto empty_audio = session.Receive(R"({"type":"response.output_audio.delta","delta":""})");
   assert(empty_audio.warning && empty_audio.audio.empty() && session.state() == State::kActive);

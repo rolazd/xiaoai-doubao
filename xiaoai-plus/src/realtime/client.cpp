@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <ctime>
 #include <deque>
 #include <exception>
@@ -55,6 +56,23 @@ std::string SafeField(const std::string& value, bool message = false) {
           (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.'))
       return "unavailable";
   return value;
+}
+// Seeduplex keeps context when the next session.create carries the previous session.id.
+// Stored next to config.ini (boot.sh runs from /data/xiaoai-plus) to survive restarts.
+constexpr const char* kResumeIdFile = "dialog_id";
+std::string LoadResumeId() {
+  std::string s;
+  if (FILE* f = std::fopen(kResumeIdFile, "r")) {
+    char buf[128] = {0};
+    if (std::fgets(buf, sizeof buf, f)) s = buf;
+    std::fclose(f);
+  }
+  while (!s.empty() && (s.back() == '\n' || s.back() == '\r' || s.back() == ' ')) s.pop_back();
+  return s.size() > 120 ? std::string{} : s;
+}
+void SaveResumeId(const std::string& id) {
+  if (id.empty() || id.size() > 120 || id == LoadResumeId()) return;
+  if (FILE* f = std::fopen(kResumeIdFile, "w")) { std::fputs(id.c_str(), f); std::fclose(f); }
 }
 }  // namespace
 
@@ -178,7 +196,16 @@ bool Client::StartSession(std::chrono::milliseconds timeout, const std::string& 
                         "Preserve the required identity question and continuation opening.";
       if(instructions_override.empty() && !cfg_.memory.enabled && cfg_.realtime.protocol=="o2")
         instructions = memory::PlaymateInstructions(cfg_.memory.child_names);
-      create = session_.Create(instructions, cfg_.realtime.preset.voice, cfg_.memory.enabled);
+      nlohmann::json extra=nlohmann::json::object();
+      const bool plain_v3=cfg_.realtime.protocol=="v3" && !cfg_.memory.enabled;
+      if(plain_v3 && !cfg_.realtime.websearch_api_key.empty()) {
+        extra["enable_volc_websearch"]=true;
+        extra["volc_websearch_api_key"]=cfg_.realtime.websearch_api_key;
+        extra["volc_websearch_result_count"]=5;
+      }
+      create = session_.Create(instructions, cfg_.realtime.preset.voice, cfg_.memory.enabled,
+                               plain_v3 && cfg_.realtime.resume_dialog ? LoadResumeId() : std::string{},
+                               extra.dump());
     }
     sent = SendTextLocked(create);
   } catch (...) {
@@ -197,6 +224,8 @@ bool Client::StartSession(std::chrono::milliseconds timeout, const std::string& 
     });
     if (done && session_.state() == duplex::State::kActive) {
       kLog->info("duplex session.created received");
+      if(cfg_.realtime.protocol=="v3" && !cfg_.memory.enabled && cfg_.realtime.resume_dialog)
+        SaveResumeId(session_.id());
       return true;
     }
     session_.Fail();
