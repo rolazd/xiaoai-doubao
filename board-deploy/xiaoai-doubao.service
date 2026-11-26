@@ -1,0 +1,16 @@
+[Unit]
+Description=Xiaoai-Doubao English companion (S905X board)
+After=network-online.target sound.target
+Wants=network-online.target
+StartLimitIntervalSec=1800
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/xiaoai-doubao
+ExecStart=/opt/xiaoai-doubao/xiaoai_plus_speaker -c /opt/xiaoai-doubao/config.ini
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

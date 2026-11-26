@@ -147,7 +147,7 @@ int main() {
   });
   run("explicit_exit_cancels_pending", []{
     Harness h; h.hear("opaque synthetic adult", "old"); h.wait_calls(1);
-    h.hear("关闭", "exit"); h.wait_actions(2); Check(h.last().exit, "explicit exit action");
+    h.hear("退出", "exit"); h.wait_actions(2); Check(h.last().exit, "explicit exit action");
     h.release(0, "adult"); h.network_barrier(); Check(h.count() == 2, "late classifier after exit");
   });
   run("end_cancels_pending", []{

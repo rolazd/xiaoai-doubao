@@ -253,10 +253,25 @@ void Config::validate(bool memory_only) const {
   if (conversation.daily_token_limit > 1000000000) {
     throw std::runtime_error("conversation.daily_token_limit must be 0..1000000000");
   }
-  if (wakeup.s32_shift != 8 && wakeup.s32_shift != 16)
-    throw std::runtime_error("wakeup.s32_shift must be 8 or 16");
+  if (audio.bits_per_sample == 32 && wakeup.s32_shift != 8 && wakeup.s32_shift != 16)
+    throw std::runtime_error("wakeup.s32_shift must be 8 or 16 for 32-bit capture");
   if (wakeup.input_channel < -1 || wakeup.input_channel > 2)
     throw std::runtime_error("wakeup.input_channel must be beamformed or 0..2");
+  if (wakeup.input_channel >= audio.channels)
+    throw std::runtime_error("wakeup.input_channel must be below audio.channels");
+  if (audio.sample_rate < 8000 || audio.sample_rate > 48000)
+    throw std::runtime_error("audio.sample_rate must be 8000..48000");
+  if (audio.channels < 1 || audio.channels > 8)
+    throw std::runtime_error("audio.channels must be 1..8");
+  if (audio.bits_per_sample != 16 && audio.bits_per_sample != 32)
+    throw std::runtime_error("audio.bits_per_sample must be 16 or 32");
+  if (audio.buffer_size <= 0 || audio.period_size <= 0 || audio.period_size > audio.buffer_size)
+    throw std::runtime_error("audio.buffer_size/period_size invalid");
+  if (audio.reference_channel != -1 &&
+      (audio.reference_channel < 1 || audio.reference_channel >= audio.channels))
+    throw std::runtime_error("audio.reference_channel must be -1 or a channel after the microphones");
+  if (audio.volume_card.empty() || audio.volume_control.empty() || audio.volume_state.empty())
+    throw std::runtime_error("audio.volume_card/control/state must not be empty");
   if(wakeup.kws_num_threads<1)throw std::runtime_error("wakeup.kws_num_threads must be positive");
   if (!(wakeup.kws_threshold > 0.0f && wakeup.kws_threshold <= 1.0f))
     throw std::runtime_error("wakeup.kws_threshold must be in (0,1]");
@@ -449,6 +464,26 @@ Config load(const std::string& path, bool memory_only) {
     if (auto it = sections.find("audio"); it != sections.end()) {
       const auto& kv = it->second;
       SetIfPresent(kv, "playback_gain", &cfg.audio.playback_gain);
+      SetIfPresent(kv, "input_device", &cfg.audio.input_device);
+      SetIfPresent(kv, "output_device", &cfg.audio.output_device);
+      SetIfPresent(kv, "volume_card", &cfg.audio.volume_card);
+      SetIfPresent(kv, "volume_control", &cfg.audio.volume_control);
+      SetIfPresent(kv, "volume_state", &cfg.audio.volume_state);
+      const auto parse_int = [&kv](const char* key, int* target) {
+        auto value = kv.find(key);
+        if (value == kv.end()) return;
+        size_t parsed = 0;
+        try { *target = std::stoi(value->second, &parsed); }
+        catch (...) { throw std::runtime_error(std::string("audio.") + key + " must be an integer"); }
+        if (parsed != value->second.size())
+          throw std::runtime_error(std::string("audio.") + key + " must be an integer");
+      };
+      parse_int("sample_rate", &cfg.audio.sample_rate);
+      parse_int("channels", &cfg.audio.channels);
+      parse_int("bits_per_sample", &cfg.audio.bits_per_sample);
+      parse_int("buffer_size", &cfg.audio.buffer_size);
+      parse_int("period_size", &cfg.audio.period_size);
+      parse_int("reference_channel", &cfg.audio.reference_channel);
       if (auto dump = kv.find("dump_output_audio_raw"); dump != kv.end()) {
         if (dump->second != "0" && dump->second != "1")
           throw std::runtime_error("audio.dump_output_audio_raw must be 0 or 1");

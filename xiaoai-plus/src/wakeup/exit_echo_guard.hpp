@@ -1,19 +1,17 @@
 #pragma once
-#include <array>
 #include <mutex>
 #include <string>
 #include "app/conversation_policy.hpp"
 
 namespace xiaoai_plus::wakeup {
-// Distinct internal labels preserve the unchanged on-device keyword file.
+// The only exit word on this build is 退出. Distinct internal labels preserve
+// the unchanged on-device keyword file.
 inline std::string StrongExitWord(const std::string& label) {
   if (label.rfind("强退:", 0) == 0) return label.substr(std::string("强退:").size());
   return {};
 }
 inline std::string StrongExitLabel(const std::string& line) {
-  for (const auto& pair : {std::pair<const char*, const char*>{"b ì z uǐ", "闭嘴"},
-       {"b ié sh uō l e", "别说了"}, {"t íng x ià", "停下"},
-       {"g uān b ì", "关闭"}, {"t uì x ià", "退下"}})
+  for (const auto& pair : {std::pair<const char*, const char*>{"t uì ch ū", "退出"}})
     if (line.rfind(pair.first, 0) == 0) return std::string("强退:") + pair.second;
   return {};
 }
@@ -26,25 +24,19 @@ class ExitEchoGuard {
     if (!id.empty()) id_=id;
     // Keep flags for the complete reply; only a small suffix is needed for
     // words split across deltas. No conversation text is persisted or logged.
-    if (done) { seen_.fill(false); tail_.clear(); }
+    if (done) { seen_=false; tail_.clear(); }
     auto joined=tail_+app::NormalizeConversationCommand(text);
-    const std::array<std::string,5> words={"闭嘴","别说了","停下","关闭","退下"};
-    for(size_t i=0;i<words.size();++i) if(joined.find(words[i])!=std::string::npos) seen_[i]=true;
-    if(joined.find("关掉")!=std::string::npos) seen_[3]=true;
-    for(const char* word:{"停止","停掉"}) if(joined.find(word)!=std::string::npos) seen_[2]=true;
+    if (joined.find("退出")!=std::string::npos) seen_=true;
     tail_=joined.substr(joined.size()>32?joined.size()-32:0);
   }
   bool Contains(const std::string& label) {
     std::lock_guard<std::mutex> l(mu_);
-    const auto word=StrongExitWord(label);
-    const std::array<std::string,5> words={"闭嘴","别说了","停下","关闭","退下"};
-    for(size_t i=0;i<words.size();++i) if(word==words[i]) return seen_[i];
-    return false;
+    return StrongExitWord(label)=="退出" && seen_;
   }
  private:
-  void Clear() { id_.clear();tail_.clear();seen_.fill(false); }
+  void Clear() { id_.clear();tail_.clear();seen_=false; }
   std::mutex mu_;
   std::string id_,tail_;
-  std::array<bool,5> seen_{};
+  bool seen_{false};
 };
 } // namespace xiaoai_plus::wakeup

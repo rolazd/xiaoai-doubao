@@ -63,7 +63,7 @@ class App {
   static void ConvertS32ToS16(const std::vector<uint8_t>& chunk, std::vector<uint8_t>* out,
                               int shift);
   static void DownmixToMono(const std::vector<uint8_t>& chunk, int channels,
-                            std::vector<uint8_t>* out);
+                            int reference_channel, std::vector<uint8_t>* out);
   static void ExtractChannelS16(const std::vector<uint8_t>& chunk, int channels, int channel,
                                 std::vector<uint8_t>* out);
 

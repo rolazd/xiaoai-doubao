@@ -4,6 +4,8 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -12,11 +14,15 @@
 
 namespace xiaoai_plus::audio {
 
-// The device's Playback PCM and native player share this ALSA softvol.
+// The device's Playback PCM and native player share this ALSA control.
+// Levels are kept as percentages so any mixer range works (0..25, 0..100,
+// 0..255, ...).
 class VolumeControl {
  public:
-  explicit VolumeControl(std::string state = "/data/xiaoai-plus/volume")
-      : state_(std::move(state)) {}
+  explicit VolumeControl(std::string state = "volume", std::string card = "0",
+                         std::string control = "mysoftvol")
+      : state_(std::move(state)), card_(std::move(card)),
+        control_(std::move(control)) {}
 
   static int Command(std::string text) {
     for (char& c : text) if (static_cast<unsigned char>(c) < 128)
@@ -40,31 +46,42 @@ class VolumeControl {
   }
 
   static int Next(int current, int direction) {
-    constexpr std::array<int, 5> levels{144, 172, 200, 228, 255};
+    constexpr std::array<int, 5> levels{56, 67, 78, 89, 100};
     if (direction > 0) {
       const auto it = std::upper_bound(levels.begin(), levels.end(), current);
-      return it == levels.end() ? 255 : *it;
+      return it == levels.end() ? 100 : *it;
     }
     const auto it = std::lower_bound(levels.begin(), levels.end(), current);
     // Never turn a quieter native setting up in response to "quieter".
     return it == levels.begin() ? std::min(current, levels.front()) : *std::prev(it);
   }
 
-  static int Read() {
-    FILE* pipe = popen("amixer -c 0 cget name=mysoftvol 2>/dev/null", "r");
+  // Returns the control's current percentage, or -1 when unavailable.
+  int Read() const {
+    const std::string cmd =
+        "amixer -c " + card_ + " sget '" + control_ + "' 2>/dev/null";
+    FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) return -1;
-    char line[256]; int volume = -1;
+    char line[512];
+    int percent = -1;
     while (fgets(line, sizeof(line), pipe)) {
-      int left, right;
-      if (sscanf(line, " : values=%d,%d", &left, &right) == 2 &&
-          left >= 0 && left <= 255 && right >= 0 && right <= 255) volume = std::max(left, right);
+      const char* p = std::strchr(line, '[');
+      while (p) {
+        int value = -1;
+        if (std::sscanf(p, "[%d%%]", &value) == 1 && value >= 0 && value <= 100) {
+          percent = value;
+          break;
+        }
+        p = std::strchr(p + 1, '[');
+      }
+      if (percent >= 0) break;
     }
-    return pclose(pipe) == 0 ? volume : -1;
+    return pclose(pipe) == 0 ? percent : -1;
   }
 
   bool Initialize() {
     int saved = -1; std::ifstream(state_) >> saved;
-    if (saved >= 0 && saved <= 255) return Write(saved);
+    if (saved >= 0 && saved <= 100) return Write(saved);
     return Snapshot();
   }
 
@@ -78,20 +95,23 @@ class VolumeControl {
   bool Snapshot() { const int current = Read(); return current >= 0 && Save(current); }
 
  private:
-  static bool Write(int volume) {
-    const std::string cmd = "amixer -q -c 0 cset name=mysoftvol " +
-        std::to_string(volume) + "," + std::to_string(volume) + " 2>/dev/null";
+  bool Write(int percent) const {
+    const std::string cmd = "amixer -q -c " + card_ + " sset '" + control_ + "' " +
+        std::to_string(percent) + "% 2>/dev/null";
     FILE* pipe = popen(cmd.c_str(), "r");
-    return pipe && pclose(pipe) == 0 && Read() == volume;
+    return pipe && pclose(pipe) == 0;
   }
 
-  bool Save(int volume) {
+  bool Save(int percent) {
     const std::string temp = state_ + ".tmp";
-    { std::ofstream out(temp); if (!out) return false; out << volume << '\n'; out.close();
+    { std::ofstream out(temp); if (!out) return false; out << percent << '\n'; out.close();
       if (!out || chmod(temp.c_str(), 0600) != 0) { std::remove(temp.c_str()); return false; } }
     if (std::rename(temp.c_str(), state_.c_str()) == 0) return true;
     std::remove(temp.c_str()); return false;
   }
+
   std::string state_;
+  std::string card_;
+  std::string control_;
 };
 }  // namespace xiaoai_plus::audio

@@ -241,19 +241,19 @@ int main() {
     strong_engine->Push("结束");strong_listener.AcceptPcm(silence);assert(strong_ends==stage);
     assert(strong_engine->strong_enabled && !strong_engine->exit_enabled);
     if(stage==2)strong_gate.SetAiSpeaking(false);
-    strong_engine->Push("强退:关闭");strong_listener.AcceptPcm(silence);assert(strong_ends==stage+1);
+    strong_engine->Push("强退:退出");strong_listener.AcceptPcm(silence);assert(strong_ends==stage+1);
   }
   strong_gate.Activate("playing thresholds");strong_gate.SetAiSpeaking(true);
-  strong_engine->Push("强退:关闭",0.44f);strong_listener.AcceptPcm(silence);assert(strong_ends==3);
-  strong_engine->Push("强退:关闭",0.45f);strong_listener.AcceptPcm(silence);assert(strong_ends==4);
+  strong_engine->Push("强退:退出",0.44f);strong_listener.AcceptPcm(silence);assert(strong_ends==3);
+  strong_engine->Push("强退:退出",0.45f);strong_listener.AcceptPcm(silence);assert(strong_ends==4);
   strong_gate.Activate("quiet thresholds");
   for(float score:{0.30f,0.33f,0.41f,0.44f}) {
-    strong_engine->Push("强退:关闭",score);strong_listener.AcceptPcm(silence);assert(strong_ends==4);
+    strong_engine->Push("强退:退出",score);strong_listener.AcceptPcm(silence);assert(strong_ends==4);
   }
-  strong_engine->Push("强退:关闭",0.45f);strong_listener.AcceptPcm(silence);assert(strong_ends==5);
+  strong_engine->Push("强退:退出",0.45f);strong_listener.AcceptPcm(silence);assert(strong_ends==5);
   strong_cfg.exit_playback_threshold=0.60f;LocalListener configured(strong_cfg);
   strong_gate.Activate("configured playing");strong_gate.SetAiSpeaking(true);
-  strong_engine->Push("强退:关闭",0.59f);configured.AcceptPcm(silence);assert(strong_ends==5);
+  strong_engine->Push("强退:退出",0.59f);configured.AcceptPcm(silence);assert(strong_ends==5);
   strong_engine->Push("豆包豆包",0.05f);
   const auto wake=configured.AnalyzePcm(silence,std::chrono::steady_clock::now());
   assert(wake.keyword=="豆包豆包" && !wake.end_session); // Wake route ignores the exit threshold.
@@ -269,15 +269,15 @@ int main() {
   echo_cfg.exit_after_ai_speech=500ms;
   LocalListener echo_listener(echo_cfg);
   echo_gate.Activate("identity");echo_gate.SetAiSpeaking(true);
-  echo.Update("r1","可以说关闭",false);
-  echo_engine->Push("强退:关闭");echo_listener.AcceptPcm(silence);assert(echo_ends==0);
+  echo.Update("r1","可以说退出",false);
+  echo_engine->Push("强退:退出");echo_listener.AcceptPcm(silence);assert(echo_ends==0);
   echo_gate.SetAiSpeaking(false);
-  echo_engine->Push("强退:关闭");echo_listener.AcceptPcm(silence);assert(echo_ends==0);
+  echo_engine->Push("强退:退出");echo_listener.AcceptPcm(silence);assert(echo_ends==0);
   std::this_thread::sleep_for(550ms);
-  echo_engine->Push("强退:关闭");echo_listener.AcceptPcm(silence);assert(echo_ends==1);
+  echo_engine->Push("强退:退出");echo_listener.AcceptPcm(silence);assert(echo_ends==1);
   echo_gate.Activate("playing");echo_gate.SetAiSpeaking(true);
   echo.Update("r2","恐龙很好玩",false);
-  echo_engine->Push("强退:关闭");echo_listener.AcceptPcm(silence);assert(echo_ends==2);
+  echo_engine->Push("强退:退出");echo_listener.AcceptPcm(silence);assert(echo_ends==2);
   echo_listener.Close();echo_gate.Close();
 
   // Exit words wait after wake (greeting "在") and after the AI's audio tail.

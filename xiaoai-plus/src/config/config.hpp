@@ -38,8 +38,8 @@ struct Realtime {
 };
 
 struct AudioPreset {
-  std::string input_device{"noop"};
-  std::string output_device{"default"};
+  std::string input_device{"plughw:1,0"};
+  std::string output_device{"plughw:1,0"};
   int sample_rate{16000};
   int channels{1};
   int bits_per_sample{16};
@@ -47,6 +47,13 @@ struct AudioPreset {
   int period_size{360};
   float playback_gain{0.90f};
   bool dump_output_audio_raw{false};
+  // 0-based capture channel carrying the device's own playback (loopback
+  // reference) for echo cancellation, or -1 when the capture has none.
+  // Microphone channels are assumed to be 0..reference_channel-1.
+  int reference_channel{-1};
+  std::string volume_card{"1"};
+  std::string volume_control{"PCM"};
+  std::string volume_state{"volume"};
 };
 using Audio = AudioPreset;
 

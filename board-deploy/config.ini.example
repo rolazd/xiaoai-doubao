@@ -1,0 +1,67 @@
+[realtime]
+# Paste the Volcengine (火山引擎) API key here before starting the service.
+# Keep this file mode 0600.
+protocol = o2
+api_key = REPLACE_WITH_VOLCENGINE_API_KEY
+model = 1.2.6.1
+voice = zh_female_vv_jupiter_bigtts
+bot_name = 豆包
+system_role = 你是豆包同学，是小爱音箱上的语音助手。
+speaking_style = 语气自然、友好、简洁。
+
+[realtime.o2]
+end_smooth_window_ms = 6000
+voice = zh_female_vv_jupiter_bigtts
+
+[wakeup]
+kws_agc = on
+say_hello = Hi! I'm Doubao. Story or riddle?
+spoken_cues = off
+keywords_file = /opt/xiaoai-doubao/keywords/keywords_doubao_repeat_end.txt
+# Capture is S16LE on this board; s32_shift is only used for 32-bit capture.
+s32_shift = 16
+input_channel = beamformed
+# Start here on a single far-field microphone; lower if misses, raise if false wakes.
+kws_threshold = 0.10
+# One inference thread: the stock sherpa-onnx package spins idle ORT workers.
+kws_num_threads = 1
+exit_playback_threshold = 0.45
+
+[conversation]
+idle_seconds = 30
+smart_turn = on
+smart_turn_complete_ms = 1500
+smart_turn_open_ms = 4500
+absolute_timeout_seconds = 0
+# No loopback reference on this USB sound card: stay half-duplex.
+duplex_mode = half
+echo_canceller = apm
+daily_token_limit = 0
+
+[audio]
+input_device = plughw:1,0
+output_device = plughw:1,0
+sample_rate = 16000
+channels = 1
+bits_per_sample = 16
+buffer_size = 1440
+period_size = 360
+playback_gain = 0.90
+dump_output_audio_raw = 0
+# -1: capture has no playback reference channel.
+reference_channel = -1
+volume_card = 1
+volume_control = PCM
+volume_state = /opt/xiaoai-doubao/volume
+
+[memory]
+enabled = off
+server_url = https://xiaoai.example.invalid
+device_secret =
+cache_dir = /opt/xiaoai-doubao/memory
+child_names = Amy, Ben
+identity_text_log = on
+
+[stop_key]
+device =
+key_code = -1

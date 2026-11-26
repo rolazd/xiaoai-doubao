@@ -176,7 +176,12 @@ struct ZipformerKwsEngine::Impl {
       if (!r.keyword.empty()) {
         spotter.Reset(&stream);
         const auto meta=nlohmann::json::parse(r.json);
-        return KwsHit{r.keyword,meta.at("score").get<float>()};
+        // Unpatched sherpa-onnx does not expose the match score; accept the
+        // hit instead of failing the whole KWS stream.
+        float score = 1.0f;
+        if (meta.contains("score") && meta["score"].is_number())
+          score = meta["score"].get<float>();
+        return KwsHit{r.keyword,score};
       }
     }
 

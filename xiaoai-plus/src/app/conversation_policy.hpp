@@ -73,16 +73,13 @@ inline size_t Utf8Characters(const std::string& text) {
 }
 
 inline const char* MatchedExitCommand(const std::string& text) {
-  static const char* commands[] = {
-      "再见", "拜拜", "豆包再见", "关闭", "关掉", "停止", "停掉",
-      "停下", "退下", "退出", "结束", "结束对话", "不聊了", "别说了",
-      "闭嘴", "退出对话"};
+  static const char* commands[] = {"退出"};
   auto normalized = NormalizeConversationCommand(text);
   // Final Chinese transcript only: <=8 characters after punctuation removal,
   // whole command or a command suffix; negation/quotation/metalinguistic requests
   // never exit. No English commands. Long narratives cannot match a suffix.
   if(Utf8Characters(normalized)>8)return nullptr;
-  for(const char* deny : {"不想", "不要", "不能", "别关闭", "别退出", "别结束", "不会", "不许", "不是", "没有", "怎么", "如何", "什么", "说再见", "说拜拜", "叫再见", "叫拜拜", "“", "”", "\"", "翻译"}) {
+  for(const char* deny : {"不想", "不要", "不能", "别退出", "不会", "不许", "不是", "没有", "怎么", "如何", "什么", "“", "”", "\"", "翻译"}) {
     if(normalized.find(deny)!=std::string::npos)return nullptr;
   }
   for(int pass=0;pass<4;++pass) {

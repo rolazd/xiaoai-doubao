@@ -226,7 +226,9 @@ std::vector<std::string> LoadWakeupKeywords(const std::string& keywords_file) {
 
 App::App(config::Config cfg, bool kws_only, bool trial_once, bool kws_diagnostics,
          int kws_s32_shift, int kws_input_channel)
-    : cfg_(std::move(cfg)), kws_only_(kws_only), trial_once_(trial_once),
+    : cfg_(std::move(cfg)),
+      volume_(cfg_.audio.volume_state, cfg_.audio.volume_card, cfg_.audio.volume_control),
+      kws_only_(kws_only), trial_once_(trial_once),
       kws_diagnostics_(kws_diagnostics), kws_s32_shift_(kws_s32_shift),
       kws_input_channel_(kws_input_channel) {
   if (kws_diagnostics_ && !kws_only_) {
@@ -237,15 +239,8 @@ App::App(config::Config cfg, bool kws_only, bool trial_once, bool kws_diagnostic
       !(cfg_.wakeup.kws_threshold > 0.0f && cfg_.wakeup.kws_threshold <= 1.0f)) {
     throw std::invalid_argument("invalid KWS PCM configuration");
   }
-  // Keep runtime behavior aligned with open-xiaoai defaults.
-  cfg_.audio.input_device = "noop";
-  cfg_.audio.output_device = "Playback";
-  cfg_.audio.sample_rate = 16000;
-  cfg_.audio.channels = 4;
-  cfg_.audio.bits_per_sample = 32;  // Record S32_LE; PDM data is in lower 24 bits
-  cfg_.audio.buffer_size = 1440;
-  cfg_.audio.period_size = 360;
-
+  // Audio format, devices, volume control and reference channel come from
+  // config.ini so the same code runs on other boards.
   recorder_ = std::make_unique<audio::ArecordRecorder>(cfg_.audio);
   if (kws_diagnostics_) {
     kws_stats_ = std::make_unique<audio::KwsDiagnostics>(cfg_.audio.channels);
@@ -932,7 +927,7 @@ bool App::Run() {
   if (!kws_only_) {
     if (!volume_.Initialize()) kLog->warn("shared volume initialization failed");
     kLog->info("playback pcm={} gain={} shared_volume={}", cfg_.audio.output_device,
-               cfg_.audio.playback_gain, audio::VolumeControl::Read());
+               cfg_.audio.playback_gain, volume_.Read());
   }
   kLog->info("starting app device={} rate={} channels={} bits={} buffer={} period={} kws_threshold={} kws_num_threads={}",
       cfg_.audio.input_device, cfg_.audio.sample_rate, cfg_.audio.channels,
@@ -1089,7 +1084,7 @@ void App::ConvertS32ToS16(const std::vector<uint8_t>& chunk, std::vector<uint8_t
 
 
 void App::DownmixToMono(const std::vector<uint8_t>& chunk, int channels,
-                        std::vector<uint8_t>* out) {
+                        int reference_channel, std::vector<uint8_t>* out) {
   if (!out) {
     return;
   }
@@ -1105,8 +1100,11 @@ void App::DownmixToMono(const std::vector<uint8_t>& chunk, int channels,
   const auto* in = reinterpret_cast<const int16_t*>(chunk.data());
   const size_t n_frames = chunk.size() / (sizeof(int16_t) * stride);
 
-  // Ch0-Ch2 are mics; Ch3 is playback reference on 4-ch capture.
-  const int mic_channels = (channels == 4) ? 3 : std::max(1, channels);
+  // Microphones are channels before the reference; without a reference every
+  // channel is a microphone.
+  const int mic_channels = (reference_channel >= 0 && reference_channel < channels)
+                               ? reference_channel
+                               : channels;
 
   out->resize(n_frames * sizeof(int16_t));
   auto* dst = reinterpret_cast<int16_t*>(out->data());
@@ -1185,12 +1183,17 @@ void App::ExtractChannelS16(const std::vector<uint8_t>& chunk, int channels, int
 }
 
 void App::OnInputAudio(const std::vector<uint8_t>& chunk) {
-  if (kws_stats_ && chunk.size() % (sizeof(int32_t) * cfg_.audio.channels) == 0) {
+  if (cfg_.audio.bits_per_sample == 32 && kws_stats_ &&
+      chunk.size() % (sizeof(int32_t) * cfg_.audio.channels) == 0) {
     kws_stats_->ObserveCaptureS32(reinterpret_cast<const int32_t*>(chunk.data()),
         chunk.size() / (sizeof(int32_t) * cfg_.audio.channels));
   }
   const auto conversion_start = std::chrono::steady_clock::now();
-  ConvertS32ToS16(chunk, &s16_buf_, kws_s32_shift_);
+  if (cfg_.audio.bits_per_sample == 32) {
+    ConvertS32ToS16(chunk, &s16_buf_, kws_s32_shift_);
+  } else {
+    s16_buf_ = chunk;
+  }
   if (kws_stats_) {
     kws_stats_->RecordDuration(audio::KwsDiagnostics::Stage::kS32ToS16,
         std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -1207,13 +1210,15 @@ void App::OnInputAudio(const std::vector<uint8_t>& chunk) {
     capture_mono_buf_.clear();
   }
   if (capture_mono_buf_.empty()) {
-    DownmixToMono(s16_buf_, cfg_.audio.channels, &capture_mono_buf_);
+    DownmixToMono(s16_buf_, cfg_.audio.channels, cfg_.audio.reference_channel,
+                  &capture_mono_buf_);
   }
   const auto downmix_start = std::chrono::steady_clock::now();
   if (kws_input_channel_ >= 0) {
     ExtractChannelS16(s16_buf_, cfg_.audio.channels, kws_input_channel_, &kws_mono_buf_);
   } else {
-    DownmixToMono(s16_buf_, cfg_.audio.channels, &kws_mono_buf_);
+    DownmixToMono(s16_buf_, cfg_.audio.channels, cfg_.audio.reference_channel,
+                  &kws_mono_buf_);
   }
   if (cfg_.wakeup.kws_agc) {
     kws_agc_.Process(reinterpret_cast<int16_t*>(kws_mono_buf_.data()),
@@ -1226,8 +1231,10 @@ void App::OnInputAudio(const std::vector<uint8_t>& chunk) {
     kws_stats_->ObserveKwsMonoS16(reinterpret_cast<const int16_t*>(kws_mono_buf_.data()),
                                   kws_mono_buf_.size() / sizeof(int16_t));
   }
-  if (cfg_.audio.channels >= 4) {
-    ExtractChannelS16(s16_buf_, cfg_.audio.channels, 3, &reverse_ref_buf_);
+  if (cfg_.audio.reference_channel >= 0 &&
+      cfg_.audio.reference_channel < cfg_.audio.channels) {
+    ExtractChannelS16(s16_buf_, cfg_.audio.channels, cfg_.audio.reference_channel,
+                      &reverse_ref_buf_);
   } else {
     reverse_ref_buf_.clear();
   }
@@ -1531,7 +1538,7 @@ void App::OnAsrFinal(const std::string& text) {
     if (direction) {
       const bool applied = volume_.Adjust(direction);
       kLog->info("volume command direction={} applied={} shared_volume={}",
-          direction, applied, audio::VolumeControl::Read());
+          direction, applied, volume_.Read());
     }
   }
   if (const char* command = gate_ && gate_->step()==wakeup::Step::kActive ? MatchedExitCommand(text) : nullptr) {

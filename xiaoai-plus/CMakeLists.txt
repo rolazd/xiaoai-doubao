@@ -11,11 +11,21 @@ set(SHERPA_ONNX_STATIC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/assets/sherpa_onnx_stat
 
 include(FetchContent)
 
+if(NOT CMAKE_CROSSCOMPILING)
+  # The official linux-aarch64 sherpa-onnx shared package exports the old
+  # libstdc++ ABI symbols (std::string without __cxx11). Build every target,
+  # including fetched dependencies, with the same ABI so they link.
+  add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
+endif()
+
 # Force ZLIB and OpenSSL to resolve to static .a BEFORE FetchContent
-# so that ixwebsocket picks up the static versions.
-find_library(ZLIB_STATIC_LIB NAMES libz.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
-find_library(SSL_STATIC_LIB NAMES libssl.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
-find_library(CRYPTO_STATIC_LIB NAMES libcrypto.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
+# so that ixwebsocket picks up the static versions. Native builds use the
+# distribution's default libraries instead.
+if(CMAKE_CROSSCOMPILING)
+  find_library(ZLIB_STATIC_LIB NAMES libz.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
+  find_library(SSL_STATIC_LIB NAMES libssl.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
+  find_library(CRYPTO_STATIC_LIB NAMES libcrypto.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
+endif()
 if(ZLIB_STATIC_LIB)
   set(ZLIB_LIBRARY ${ZLIB_STATIC_LIB} CACHE FILEPATH "" FORCE)
 endif()
@@ -84,26 +94,38 @@ if(XIAOAI_NATIVE_ONLY)
   return()
 endif()
 
-# --- sherpa-onnx static libraries ---
+# --- sherpa-onnx libraries ---
 find_path(SHERPA_ONNX_INCLUDE_DIR
   NAMES sherpa-onnx/c-api/cxx-api.h
   HINTS ${SHERPA_ONNX_STATIC_ROOT}
   PATH_SUFFIXES include
   NO_CMAKE_FIND_ROOT_PATH)
 
-set(_sherpa_static_libs
-  sherpa-onnx-cxx-api
-  sherpa-onnx-c-api
-  sherpa-onnx-core
-  kaldi-decoder-core
-  sherpa-onnx-kaldifst-core
-  sherpa-onnx-fstfar
-  sherpa-onnx-fst
-  kaldi-native-fbank-core
-  kissfft-float
-  onnxruntime
-  ssentencepiece_core
-)
+if(CMAKE_CROSSCOMPILING)
+  set(_sherpa_static_libs
+    sherpa-onnx-cxx-api
+    sherpa-onnx-c-api
+    sherpa-onnx-core
+    kaldi-decoder-core
+    sherpa-onnx-kaldifst-core
+    sherpa-onnx-fstfar
+    sherpa-onnx-fst
+    kaldi-native-fbank-core
+    kissfft-float
+    onnxruntime
+    ssentencepiece_core
+  )
+else()
+  # The official shared package bundles core into c-api and ships onnxruntime.
+  set(_sherpa_static_libs
+    sherpa-onnx-cxx-api
+    sherpa-onnx-c-api
+    onnxruntime
+  )
+  set(CMAKE_BUILD_RPATH "\$ORIGIN/lib")
+  set(CMAKE_INSTALL_RPATH "\$ORIGIN/lib")
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+endif()
 set(SHERPA_ONNX_STATIC_LIBRARIES "")
 foreach(_lib ${_sherpa_static_libs})
   find_library(_found_${_lib}
@@ -118,17 +140,21 @@ foreach(_lib ${_sherpa_static_libs})
   list(APPEND SHERPA_ONNX_STATIC_LIBRARIES ${_found_${_lib}})
 endforeach()
 
-# --- webrtc static library ---
-find_library(WEBRTC_STATIC_LIB NAMES libwebrtc_audio_processing.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
+# --- webrtc audio processing library ---
+if(CMAKE_CROSSCOMPILING)
+  find_library(WEBRTC_STATIC_LIB NAMES libwebrtc_audio_processing.a HINTS ${CMAKE_SYSROOT}/usr/lib NO_DEFAULT_PATH)
+else()
+  find_library(WEBRTC_STATIC_LIB NAMES webrtc_audio_processing)
+endif()
 
 if(NOT SHERPA_ONNX_INCLUDE_DIR)
   message(FATAL_ERROR "sherpa-onnx headers not found. Set SHERPA_ONNX_STATIC_ROOT")
 endif()
-if(NOT ZLIB_STATIC_LIB)
+if(CMAKE_CROSSCOMPILING AND NOT ZLIB_STATIC_LIB)
   message(FATAL_ERROR "libz.a not found in sysroot")
 endif()
 if(NOT WEBRTC_STATIC_LIB)
-  message(FATAL_ERROR "libwebrtc_audio_processing.a not found in sysroot")
+  message(FATAL_ERROR "libwebrtc_audio_processing not found")
 endif()
 
 find_path(ZLIB_INCLUDE_DIR NAMES zlib.h HINTS ${CMAKE_SYSROOT}/usr/include)
