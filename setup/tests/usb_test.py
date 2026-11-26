@@ -60,6 +60,8 @@ elif a[0]=='bulkcmd':
   (r/'reset').touch()
   if m=='reset_err':print('ERR: bulkcmd failed!');sys.exit(197)
   sys.exit(0)
+ if m.endswith('first_io') and not (r/'warm').exists():
+  (r/'warm').touch();print('[LUSB]usbReadFile len=512,ret=-5 error_msg=Input/output error');print('ERR: AmlUsbBulkCmd failed!');sys.exit(0)
  boot1=m.startswith('boot1')
  ok=c=='test 1 = 1' or ('boot0' in c and not boot1) or ('boot1' in c and boot1)
  print('bulkInReply success' if ok else 'failed')
@@ -133,6 +135,12 @@ elif a[0]=='partition':
         self.assertFalse((self.root/'reset').exists())
         self.assertTrue((self.local/'backup.json').exists())
         self.assertFalse(any(line.startswith('partition ') for line in (self.root/'calls').read_text().splitlines()))
+    def test_first_bulkcmd_io_error_ignored(self):
+        self.run_step(5,'--execute');self.write('mode','boot1_first_io')
+        self.run_step(6,'--execute')
+        self.assertEqual(json.loads((self.local/'boot-part.json').read_text()),{'boot_part':'boot1'})
+        self.assertIn('Input/output error',(self.local/'update.log').read_text())
+        self.assertFalse((self.root/'written').exists())
     def test_boot1(self):
         self.write('mode','boot1');self.backup()
         self.run_step(7,'--i-accept-brick-risk')

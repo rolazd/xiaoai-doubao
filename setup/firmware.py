@@ -111,6 +111,9 @@ def reset(a):
     raise RuntimeError('音箱没有正常回到普通模式；先不要拔插，到 GitHub 提 Issue')
 
 def boot_part(a):
+    # On some Macs the first bulkcmd after entering flashing mode fails its USB read (GitHub #10).
+    # Send a read-only warm-up first and ignore its result; calibration below still fails closed.
+    tool(a,'bulkcmd','     test 1 = 1',failed_test=True)
     results=[]
     for cmd in ('test 1 = 1','test 1 = 0','test ${boot_part} = boot0','test ${boot_part} = boot1'):
         rc,t=tool(a,'bulkcmd','     '+cmd,failed_test=True)
